@@ -2,7 +2,13 @@
 #include <stdio.h>
 #include <string.h>
 
-char buff[1024];
+char delim[] = " \n\t";
+char *ptr;
+char *line = NULL;
+size_t linecap = 0;
+ssize_t linelen;
+int line_num = 0;
+int col_num = 0;
 
 void getToken(char* input_file){
     FILE *fptr;
@@ -15,21 +21,43 @@ void getToken(char* input_file){
     ssize_t linelen;
     int line_num = 0;
     int col_num = 0;
-    int len = 0;
     char *ptr;
     char delim[] = " \n\t";
+    
     while ((linelen = getline(&line, &linecap, fptr)) > 0){
         line_num++;
-        len = strlen(line);
         ptr = strtok(line, delim);
         while(ptr != NULL){
             col_num = ptr - line + 1;
             printf("Token: %d:%d : %s \n", line_num, col_num, ptr);
             ptr = strtok(NULL, delim);
         }
-        col_num = len;
+        col_num = linelen;
     }
     printf("Final Spot in File : line=%d offset=%d\n", line_num, col_num);
+}
+
+// read next token from the file
+char* getNextToken(FILE *fptr){
+    char *ptr;
+    ptr = strtok(NULL, delim);
+    if(ptr == NULL){ //line is completely scanned. load a new line.
+        linelen = getline(&line, &linecap, fptr);
+        line_num++;
+        ptr = strtok(line, delim);
+    }
+    if(ptr != NULL){
+        col_num = ptr - line + 1;
+        printf("Token: %d:%d : %s \n", line_num, col_num, ptr);
+    }else{
+        col_num = linelen;
+        printf("Final Spot in File : line=%d offset=%d\n", line_num, col_num);
+    }
+    return ptr;
+}
+
+int readInt(){
+    return 0;
 }
 
 int main(int argc, char *argv[]){
@@ -37,7 +65,17 @@ int main(int argc, char *argv[]){
     if(argc==1) printf("\nNo Extra Command Line Argument Passed Other Than Program Name"); 
     char *filename = argv[1];
 
-    getToken(filename);
-
+    // getToken(filename);
+    FILE *fptr;
+    fptr = fopen(filename, "r");
+    if(fptr == NULL){
+        printf("cannot open file");
+    }
+    
+    // printf("%s", getNextToken(fptr));
+    // printf("%s", getNextToken(fptr));
+    // printf("%s", getNextToken(fptr));
+    // printf("%s", getNextToken(fptr));
+    while(getNextToken(fptr) != NULL);
     return 0;
 }
