@@ -10,7 +10,7 @@ ssize_t linelen;
 int line_num = 0;
 int col_num = 0;
 
-void getToken(char* input_file){
+void tokenizer(char* input_file){
     FILE *fptr;
     fptr = fopen(input_file, "r");
     if(fptr == NULL){
@@ -38,13 +38,17 @@ void getToken(char* input_file){
 }
 
 // read next token from the file
-char* getNextToken(FILE *fptr){
+char* getToken(FILE *fptr){
     char *ptr;
+    ssize_t len;
     ptr = strtok(NULL, delim);
-    if(ptr == NULL){ //line is completely scanned. load a new line.
-        linelen = getline(&line, &linecap, fptr);
-        line_num++;
-        ptr = strtok(line, delim);
+    if(ptr == NULL && feof(fptr) <= 0){ //line is completely scanned. load a new line.
+        len = getline(&line, &linecap, fptr);
+        if(len > 0){
+            linelen = len;
+            line_num++;
+            ptr = strtok(line, delim);
+        }
     }
     if(ptr != NULL){
         col_num = ptr - line + 1;
@@ -65,17 +69,13 @@ int main(int argc, char *argv[]){
     if(argc==1) printf("\nNo Extra Command Line Argument Passed Other Than Program Name"); 
     char *filename = argv[1];
 
-    // getToken(filename);
+    // tokenizer(filename);
     FILE *fptr;
     fptr = fopen(filename, "r");
     if(fptr == NULL){
         printf("cannot open file");
     }
     
-    // printf("%s", getNextToken(fptr));
-    // printf("%s", getNextToken(fptr));
-    // printf("%s", getNextToken(fptr));
-    // printf("%s", getNextToken(fptr));
-    while(getNextToken(fptr) != NULL);
+    while(getToken(fptr) != NULL);
     return 0;
 }
