@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <regex>
 #include <iostream>
 #include <vector>
 #include <map>
@@ -13,6 +14,33 @@ size_t linecap = 0;
 ssize_t linelen;
 int line_num = 0;
 int col_num = 0;
+
+void parseerror(int errcode){
+    static string errstr[] = {
+        "NUM_EXPECTED", // [0] Number expect
+        "SYM_EXPECTED", // [1] Symbol Expected
+        "ADDR_EXPECTED", // [2] Addressing Expectedwhich is A/E/I/R  
+        "SYM_TOO_LONG", // [3] Symbol Name is toolong
+        "TOO_MANY_DEF_IN_MODULE", // [4] > 16 
+        "TOO_MANY_USE_IN_MODULE", // [5] > 16
+        "TOO_MANY_INSTR" // [6] total num_instr exceeds memory size (512)  
+    };
+    printf("Parse Error line %d offset %d: %s\n",line_num, col_num, errstr[errcode].c_str());
+}
+
+void printError(int errcode){
+    static string errstr[] = {
+        "Error: Absolute address exceeds machine size; zero used", // [0]
+        "Error: Relative address exceeds module size; zero used", // [1]
+        "Error: External address exceeds length of uselist; treated as immediate", // [2]  
+        "Error: This variable is multiple times defined; first value used", // [3] 
+        "TOO_MANY_DEF_IN_MODULE", // [4] > 16 
+        "TOO_MANY_USE_IN_MODULE", // [5] > 16
+        "TOO_MANY_INSTR" // [6] total num_instr exceeds memory size (512)  
+    };
+    printf("Parse Error line %d offset %d: %s\n",line_num, col_num, errstr[errcode].c_str());
+}
+
 
 struct Module{
     int base_address;
@@ -34,6 +62,21 @@ void createSymbol(string txt, int val){
     symbol.txt = txt;
     symbol.position = val;
     symbol_table.insert(pair<string, Symbol>(txt, symbol));
+}
+
+bool isNumber(string str){
+    for(int i = 0; i < str.length(); i++){
+        if(!isdigit(str[i])) return false;
+    }
+    return true;
+}
+
+bool isSymbol(string str){
+    return regex_match(str, regex("[a-z|A-Z][a-z|A-Z|0-9]*"));
+}
+
+bool isAddress(string str){
+    return (str == "A" | str == "E" | str == "I" | str == "R");
 }
 
 // read next token from the file
@@ -63,11 +106,16 @@ char* getToken(FILE *fptr){
 int readInt(FILE *fptr){
     char* tkn = getToken(fptr);
     if(tkn == NULL && !feof(fptr)){
-        printf("integer expected but not found");
+        // parseerror(0);
+        // exit(0);
         return -1;
     }
     if(tkn == NULL && feof(fptr)){
         return -1;
+    }
+    if(!isNumber(tkn)) {
+        parseerror(0);
+        exit(0);
     }
     int i = atoi(tkn);
     return i;
@@ -80,6 +128,10 @@ int readNumber(FILE *fptr){
         printf("number expected but not found");
         return -1;
     }
+    if(!isNumber(tkn)) {
+        parseerror(0);
+        exit(0);
+    }
     int i = atoi(tkn);
     return i;
 }
@@ -91,6 +143,13 @@ string readSymbol(FILE *fptr){
         printf("symbol expected but not found");
         return NULL;
     }
+    if(!isSymbol(tkn)){
+        parseerror(1);
+        exit(0);
+    } else if(tkn.size() > 16){
+        parseerror(3);
+        exit(0);
+    }
     return tkn;
 }
 
@@ -101,8 +160,9 @@ string readIEAR(FILE *fptr){
         printf("IEAR expected but not found");
         return NULL;
     }
-    if(tkn.size() > 1) {
-        printf("wrong. length > 1");
+    if(!isAddress(tkn)) {
+        parseerror(2);
+        exit(0);
     }
     return tkn;
 }
@@ -115,13 +175,14 @@ void pass1(char* input_file){
     }
     
     int offset = 0;
+    int total_code = 0;
 
     while(!feof(fptr)){
         Module module;
         
         // def list - defcount pairs of (S, R)
         int defcount = readInt(fptr);
-        if(defcount >= 0){
+        if(defcount >= 0 && defcount <= 16){
             module.defcount = defcount;
             // printf("%d\n", defcount);
             for(int i = 0; i < defcount; i++) {
@@ -130,22 +191,29 @@ void pass1(char* input_file){
                 createSymbol(symbol, val + offset);
                 // printf("(%s, %d)\n", symbol.c_str(), val);
             }
+        } else if(defcount > 16){
+            parseerror(4);
+            exit(0);
         }
         
         // use list - usecount symbols
         int usecount = readInt(fptr);
-        if(usecount >= 0){
+        if(usecount >= 0 && usecount <=16){
             module.usecount = usecount;
             // printf("%d\n", usecount);
             for (int i = 0; i < usecount; i++) {
                 string symbol = readSymbol(fptr);
                 // printf("%s\n", symbol.c_str());
             }
+        } else if(usecount > 16){
+            parseerror(5);
+            exit(0);
         }
         
         // program text - codecount pairs of (type, instr)
         int codecount = readInt(fptr);
-        if(codecount >= 0){
+        total_code += codecount;
+        if(codecount >= 0 && total_code <= 512){
             module.codecount = codecount;
             module.base_address = offset;
             // printf("%d\n", codecount);
@@ -156,6 +224,10 @@ void pass1(char* input_file){
             }
             offset += codecount;
             modules.push_back(module);
+        }
+        else if(total_code > 512){
+            parseerror(6);
+            exit(0);
         }
     }
 
@@ -249,6 +321,8 @@ int main(int argc, char *argv[]){
 
     pass1(filename);
     pass2(filename);
+
+    // cout << isAddress("AA") << endl;
 
     return 0;
 }
