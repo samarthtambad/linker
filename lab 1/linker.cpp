@@ -1,3 +1,5 @@
+// requires C++11 or greater
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -52,16 +54,26 @@ struct Module{
 struct Symbol{
     string txt;
     int position;
+    bool is_mult_def;
+    bool is_used;
+    int module_num;
 };
 
 vector<Module> modules;
 map<string, Symbol> symbol_table;
 
-void createSymbol(string txt, int val){
-    Symbol symbol;
-    symbol.txt = txt;
-    symbol.position = val;
-    symbol_table.insert(pair<string, Symbol>(txt, symbol));
+void createSymbol(string txt, int val, int module_num){
+    if(symbol_table.find(txt) == symbol_table.end()){ // not already defined
+        Symbol symbol;
+        symbol.txt = txt;
+        symbol.position = val;
+        symbol.module_num = module_num;
+        symbol.is_mult_def = false;
+        symbol.is_used = false;
+        symbol_table.insert(pair<string, Symbol>(txt, symbol));
+    } else { // symbol already defined
+        symbol_table[txt].is_mult_def = true;
+    }
 }
 
 bool isNumber(string str){
@@ -176,9 +188,11 @@ void pass1(char* input_file){
     
     int offset = 0;
     int total_code = 0;
+    int module_num = 0;
 
     while(!feof(fptr)){
         Module module;
+        module_num++;
         
         // def list - defcount pairs of (S, R)
         int defcount = readInt(fptr);
@@ -188,7 +202,7 @@ void pass1(char* input_file){
             for(int i = 0; i < defcount; i++) {
                 string symbol = readSymbol(fptr);
                 int val = readInt(fptr);
-                createSymbol(symbol, val + offset);
+                createSymbol(symbol, val + offset, module_num);
                 // printf("(%s, %d)\n", symbol.c_str(), val);
             }
         } else if(defcount > 16){
@@ -212,6 +226,7 @@ void pass1(char* input_file){
         
         // program text - codecount pairs of (type, instr)
         int codecount = readInt(fptr);
+        // assert(codecount >= 0);
         total_code += codecount;
         if(codecount >= 0 && total_code <= 512){
             module.codecount = codecount;
@@ -231,10 +246,15 @@ void pass1(char* input_file){
         }
     }
 
-    // iterate/print symbol table
-    cout << "Symbol Table" << endl;
+    // iterate and print symbol table
+    // cout << symbol_table.size() << endl;
+    printf("Symbol Table\n");
     for(map<string, Symbol>::iterator i = symbol_table.begin(); i != symbol_table.end(); ++i){
-        cout << (*i).first << "=" << (*i).second.position << endl;
+        if(!(*i).second.is_mult_def){
+            printf("%s=%d\n", (*i).first.c_str(), (*i).second.position);
+        } else {
+            printf("%s=%d Error: This variable is multiple times defined; first value used\n", (*i).first.c_str(), (*i).second.position);
+        }
     }
 
     // printf("Final Spot in File : line=%d offset=%d\n", line_num, col_num);
@@ -275,6 +295,7 @@ void pass2(char* input_file){
             for (int i = 0; i < usecount; i++) {
                 string symbol = readSymbol(fptr);
                 uselist.push_back(symbol);
+                symbol_table.at(symbol).is_used = true;
                 // printf("%s\n", symbol.c_str());
             }
         }
@@ -294,23 +315,43 @@ void pass2(char* input_file){
                     printf("%0.3d: %d\n", count, instr);
                 } 
                 else if(!strcmp(addressmode.c_str(), "A")){
-                    // doesn't change (but check for it <= 512)
-                    printf("%0.3d: %d\n", count, instr);
+                    // doesn't change (but check for <= 512 otherwise error)
+                    if(operand <= 512){
+                        printf("%0.3d: %d\n", count, instr);
+                    } else {
+                        operand = 0;
+                        instr = (opcode * 1000) + operand;
+                        printf("%0.3d: %d Error: Absolute address exceeds machine size; zero used\n", count, instr);
+                    } 
                 }
                 else if(!strcmp(addressmode.c_str(), "E")){
                     string sym = uselist[operand];
-                    instr = (opcode * 1000) +  (symbol_table[sym].position);
+                    Symbol s = symbol_table.at(sym);
+                    instr = (opcode * 1000) +  (s.position);
                     printf("%0.3d: %d\n", count, instr);
                 }
                  else if(!strcmp(addressmode.c_str(), "R")){
-                    instr = (opcode * 1000) +  (operand + modules[module_num].base_address);
-                    printf("%0.3d: %d\n", count, instr);
+                    if(operand <= 512){
+                        instr = (opcode * 1000) +  (operand + modules[module_num].base_address);
+                        printf("%0.3d: %d\n", count, instr);
+                    } else {
+                        operand = 0;
+                        instr = (opcode * 1000) +  (operand + modules[module_num].base_address);
+                        printf("%0.3d: %d Error: Relative address exceeds module size; zero used\n", count, instr);
+                    }
                 }
                 count++;
             }
             module_num++;
         }
     }
+
+    // warning [4]
+    // cout << symbol_table.size() << endl;
+    for(map<string, Symbol>::iterator i = symbol_table.begin(); i != symbol_table.end(); ++i){
+        if(!(*i).second.is_used) printf("Warning: Module %d: %s was defined but never used\n", (*i).second.module_num, (*i).second.txt.c_str());
+    }
+
     fclose(fptr);
 }
 
@@ -322,7 +363,14 @@ int main(int argc, char *argv[]){
     pass1(filename);
     pass2(filename);
 
-    // cout << isAddress("AA") << endl;
+    // FILE *fptr;
+    // fptr = fopen(filename, "r");
+    // if(fptr == NULL){
+    //     printf("cannot open file");
+    // }
+    // while(getToken(fptr) != NULL);
+
+    // cout << isSymbol("X21");
 
     return 0;
 }
