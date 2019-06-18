@@ -106,6 +106,7 @@ char* getToken(FILE *fptr){
             line_num++;
             ptr = strtok(line, delim);
         }
+        // cout << "printed";
     }
     if(ptr != NULL){
         col_num = ptr - line + 1;
@@ -183,6 +184,7 @@ string readIEAR(FILE *fptr){
 }
 
 void pass1(char* input_file){
+    // cout << "checkpoint 1";
     FILE *fptr;
     fptr = fopen(input_file, "r");
     if(fptr == NULL){
@@ -192,9 +194,12 @@ void pass1(char* input_file){
     int offset = 0;
     int total_code = 0;
     int module_num = 0;
+    // cout << "checkpoint 2";
 
     while(!feof(fptr)){
+        // cout << "checkpoint 3";
         Module module;
+        vector<Symbol> deflist;
         
         // def list - defcount pairs of (S, R)
         int defcount = readInt(fptr);
@@ -204,7 +209,11 @@ void pass1(char* input_file){
             for(int i = 0; i < defcount; i++) {
                 string symbol = readSymbol(fptr);
                 int val = readInt(fptr);
-                createSymbol(symbol, val + offset, module_num + 1);
+                Symbol s;
+                s.txt = symbol;
+                s.position = val;
+                s.module_num = module_num + 1;
+                deflist.push_back(s);
                 // printf("(%s, %d)\n", symbol.c_str(), val);
             }
         } else if(defcount > 16){
@@ -245,6 +254,18 @@ void pass1(char* input_file){
         else if(total_code > 512){
             parseerror(6);
             exit(0);
+        }
+        // error_check[5] - is val > codecount? => set it as 0 (relative to module)
+        for(int i = 0; i < deflist.size(); i++){
+            Symbol s = deflist[i];
+            int val = s.position;
+            if(symbol_table.find(s.txt) == symbol_table.end()){ // if symbol not defined
+                if(val >= codecount){ // display warning, 0 relative offset
+                    printf("Warning: Module %d: %s too big %d (max=%d) assume zero relative\n", module_num + 1, s.txt.c_str(), val, codecount - 1);
+                    val = 0;
+                }
+            }
+            createSymbol(s.txt, val + (offset - codecount), module_num + 1);
         }
         module_num++;
     }
@@ -317,63 +338,65 @@ void pass2(char* input_file){
                 int  instr = readNumber(fptr);
                 int opcode = instr / 1000;
                 int operand = instr % 1000;
-                bool isValid = false;
                 // error_check[11] - contains error_check[10]
                 if(opcode <= 9){ // valid
-                    isValid = true;
+
+                    // make relevant modifications to instr
+                    if(!strcmp(addressmode.c_str(), "I")){
+                        printf("%0.3d: %0.4d", count, instr);
+                    } 
+                    else if(!strcmp(addressmode.c_str(), "A")){
+                        // error_check[8] - abs addr <= size of machine (i.e. 512)
+                        if(operand < 512){
+                            printf("%0.3d: %0.4d", count, instr);
+                        } else {
+                            operand = 0;
+                            instr = (opcode * 1000) + operand;
+                            printf("%0.3d: %0.4d Error: Absolute address exceeds machine size; zero used", count, instr);
+                        }
+                    }
+                    else if(!strcmp(addressmode.c_str(), "E")){
+                        // error_check[6]
+                        if(operand < uselist.size()){ // valid
+                            string sym = uselist[operand];
+                            // error_check[3] - check if symbol present in symbol_table
+                            if(symbol_table.find(sym) == symbol_table.end()){ // symbol not present
+                                instr = (opcode * 1000) +  (0);
+                                actually_used.insert(sym);
+                                printf("%0.3d: %0.4d Error: %s is not defined; zero used", count, instr, sym.c_str());
+                            } else { // symbol is present
+                                Symbol s = symbol_table.at(sym);
+                                actually_used.insert(sym);
+                                instr = (opcode * 1000) +  (s.position);
+                                printf("%0.3d: %0.4d", count, instr);
+                            }
+                        } else { // error
+                            printf("%0.3d: %0.4d Error: External address exceeds length of uselist; treated as immediate", count, instr);
+                        }
+                    }
+                    else if(!strcmp(addressmode.c_str(), "R")){
+                        // error_check[9]
+                        if(operand < modules[module_num].codecount){ //VERIFY THIS
+                            instr = (opcode * 1000) +  (operand + modules[module_num].base_address);
+                            printf("%0.3d: %0.4d", count, instr);
+                        } else {
+                            operand = 0;
+                            instr = (opcode * 1000) +  (operand + modules[module_num].base_address);
+                            printf("%0.3d: %0.4d Error: Relative address exceeds module size; zero used", count, instr);
+                        }
+                    }
+
                 } else { // error
-                    isValid = false;
                     instr = 9999;
                     opcode = instr / 1000;
                     operand = instr % 1000;
+                    if(!strcmp(addressmode.c_str(), "I")) printf("%0.3d: %0.4d Error: Illegal immediate value; treated as 9999", count, instr);
+                    else printf("%0.3d: %0.4d Error: Illegal opcode; treated as 9999", count, instr);
                 }
-                // make relevant modifications to instr
-                if(!strcmp(addressmode.c_str(), "I")){
-                    printf("%0.3d: %d", count, instr);
-                } 
-                else if(!strcmp(addressmode.c_str(), "A")){
-                    // error_check[8] - abs addr <= size of machine (i.e. 512)
-                    if(operand <= 512){
-                        printf("%0.3d: %d", count, instr);
-                    } else {
-                        operand = 0;
-                        instr = (opcode * 1000) + operand;
-                        printf("%0.3d: %d Error: Absolute address exceeds machine size; zero used", count, instr);
-                    }
-                }
-                else if(!strcmp(addressmode.c_str(), "E")){
-                    // error_check[6]
-                    if(operand < uselist.size()){ // valid
-                        string sym = uselist[operand];
-                        // error_check[3] - check if symbol present in symbol_table
-                        if(symbol_table.find(sym) == symbol_table.end()){ // symbol not present
-                            instr = (opcode * 1000) +  (0);
-                            printf("%0.3d: %d Error: %s is not defined; zero used", count, instr, sym.c_str());
-                        } else { // symbol is present
-                            Symbol s = symbol_table.at(sym);
-                            actually_used.insert(sym);
-                            instr = (opcode * 1000) +  (s.position);
-                            printf("%0.3d: %d", count, instr);
-                        }
-                    } else { // error
-                        printf("%0.3d: %d Error: External address exceeds length of uselist; treated as immediate", count, instr);
-                    }
-                }
-                 else if(!strcmp(addressmode.c_str(), "R")){
-                    // error_check[9]
-                    if(operand <= modules[module_num].codecount){ //VERIFY THIS
-                        instr = (opcode * 1000) +  (operand + modules[module_num].base_address);
-                        printf("%0.3d: %d", count, instr);
-                    } else {
-                        operand = 0;
-                        instr = (opcode * 1000) +  (operand + modules[module_num].base_address);
-                        printf("%0.3d: %d Error: Relative address exceeds module size; zero used", count, instr);
-                    }
-                }
-                if(!isValid) printf(" Error: Illegal opcode; treated as 9999");
                 printf("\n");
                 count++;
             }
+
             // error_check[7] - in uselist but not actually used
             for(int i = 0; i < uselist.size(); i++){
                 if(actually_used.find(uselist[i]) == actually_used.end()){
@@ -399,6 +422,7 @@ int main(int argc, char *argv[]){
     if(argc==1) printf("\nNo Extra Command Line Argument Passed Other Than Program Name"); 
     char *filename = argv[1];
 
+    // cout << "checkpoint 1";
     pass1(filename);
     pass2(filename);
 
@@ -407,9 +431,20 @@ int main(int argc, char *argv[]){
     // if(fptr == NULL){
     //     printf("cannot open file");
     // }
+    // cout << getToken(fptr) << "---" << getToken(fptr);// << "---" << getToken(fptr) << endl;
     // while(getToken(fptr) != NULL);
 
     // cout << isSymbol("X21");
+
+    // --------------Testing------------
+    // errors - 5, 10, 12, 13, 18, 19, 20
+    // segmentation fault - 12, 13, 18
+    /* 
+        solved:
+            5 - added {actually_used.insert(sym);} even if symbol not present in stmbol_table
+            10
+
+    */  
 
     return 0;
 }
