@@ -7,6 +7,7 @@
 #include <iostream>
 #include <vector>
 #include <map>
+#include <unordered_set>
 
 using namespace std;
 
@@ -55,6 +56,7 @@ struct Symbol{
     string txt;
     int position;
     bool is_mult_def;
+    bool in_use_list;
     bool is_used;
     int module_num;
 };
@@ -69,6 +71,7 @@ void createSymbol(string txt, int val, int module_num){
         symbol.position = val;
         symbol.module_num = module_num;
         symbol.is_mult_def = false;
+        symbol.in_use_list = false;
         symbol.is_used = false;
         symbol_table.insert(pair<string, Symbol>(txt, symbol));
     } else { // symbol already defined
@@ -96,7 +99,7 @@ char* getToken(FILE *fptr){
     char *ptr;
     ssize_t len;
     ptr = strtok(NULL, delim);
-    if(ptr == NULL && !feof(fptr)){ //line is completely scanned. load a new line.
+    while(ptr == NULL && !feof(fptr)){ //line is completely scanned. load a new line.
         len = getline(&line, &linecap, fptr);
         if(len > 0){
             linelen = len;
@@ -106,7 +109,7 @@ char* getToken(FILE *fptr){
     }
     if(ptr != NULL){
         col_num = ptr - line + 1;
-        // printf("Token: %d:%d : %s \n", line_num, col_num, ptr);
+        // printf("Token: %d:%d : %s ", line_num, col_num, ptr);
     }else{
         col_num = linelen;
         // printf("Final Spot in File : line=%d offset=%d\n", line_num, col_num);
@@ -192,7 +195,6 @@ void pass1(char* input_file){
 
     while(!feof(fptr)){
         Module module;
-        module_num++;
         
         // def list - defcount pairs of (S, R)
         int defcount = readInt(fptr);
@@ -202,7 +204,7 @@ void pass1(char* input_file){
             for(int i = 0; i < defcount; i++) {
                 string symbol = readSymbol(fptr);
                 int val = readInt(fptr);
-                createSymbol(symbol, val + offset, module_num);
+                createSymbol(symbol, val + offset, module_num + 1);
                 // printf("(%s, %d)\n", symbol.c_str(), val);
             }
         } else if(defcount > 16){
@@ -244,12 +246,13 @@ void pass1(char* input_file){
             parseerror(6);
             exit(0);
         }
+        module_num++;
     }
 
     // iterate and print symbol table
-    // cout << symbol_table.size() << endl;
     printf("Symbol Table\n");
     for(map<string, Symbol>::iterator i = symbol_table.begin(); i != symbol_table.end(); ++i){
+        // error_check[2]
         if(!(*i).second.is_mult_def){
             printf("%s=%d\n", (*i).first.c_str(), (*i).second.position);
         } else {
@@ -276,6 +279,7 @@ void pass2(char* input_file){
     while(!feof(fptr)){
 
         vector<string> uselist;
+        unordered_set<string> actually_used; 
         
         // def list - defcount pairs of (S, R)
         int defcount = readInt(fptr);
@@ -295,7 +299,11 @@ void pass2(char* input_file){
             for (int i = 0; i < usecount; i++) {
                 string symbol = readSymbol(fptr);
                 uselist.push_back(symbol);
-                symbol_table.at(symbol).is_used = true;
+                if(symbol_table.find(symbol) == symbol_table.end()){
+                    // ERROR TO BE HANDLED - handled in E instr case
+                } else {
+                    symbol_table.at(symbol).in_use_list = true;
+                }
                 // printf("%s\n", symbol.c_str());
             }
         }
@@ -309,47 +317,78 @@ void pass2(char* input_file){
                 int  instr = readNumber(fptr);
                 int opcode = instr / 1000;
                 int operand = instr % 1000;
-                // printf("(%s, %d)\n", addressmode.c_str(), instr);
+                bool isValid = false;
+                // error_check[11] - contains error_check[10]
+                if(opcode <= 9){ // valid
+                    isValid = true;
+                } else { // error
+                    isValid = false;
+                    instr = 9999;
+                    opcode = instr / 1000;
+                    operand = instr % 1000;
+                }
                 // make relevant modifications to instr
                 if(!strcmp(addressmode.c_str(), "I")){
-                    printf("%0.3d: %d\n", count, instr);
+                    printf("%0.3d: %d", count, instr);
                 } 
                 else if(!strcmp(addressmode.c_str(), "A")){
-                    // doesn't change (but check for <= 512 otherwise error)
+                    // error_check[8] - abs addr <= size of machine (i.e. 512)
                     if(operand <= 512){
-                        printf("%0.3d: %d\n", count, instr);
+                        printf("%0.3d: %d", count, instr);
                     } else {
                         operand = 0;
                         instr = (opcode * 1000) + operand;
-                        printf("%0.3d: %d Error: Absolute address exceeds machine size; zero used\n", count, instr);
-                    } 
+                        printf("%0.3d: %d Error: Absolute address exceeds machine size; zero used", count, instr);
+                    }
                 }
                 else if(!strcmp(addressmode.c_str(), "E")){
-                    string sym = uselist[operand];
-                    Symbol s = symbol_table.at(sym);
-                    instr = (opcode * 1000) +  (s.position);
-                    printf("%0.3d: %d\n", count, instr);
+                    // error_check[6]
+                    if(operand < uselist.size()){ // valid
+                        string sym = uselist[operand];
+                        // error_check[3] - check if symbol present in symbol_table
+                        if(symbol_table.find(sym) == symbol_table.end()){ // symbol not present
+                            instr = (opcode * 1000) +  (0);
+                            printf("%0.3d: %d Error: %s is not defined; zero used", count, instr, sym.c_str());
+                        } else { // symbol is present
+                            Symbol s = symbol_table.at(sym);
+                            actually_used.insert(sym);
+                            instr = (opcode * 1000) +  (s.position);
+                            printf("%0.3d: %d", count, instr);
+                        }
+                    } else { // error
+                        printf("%0.3d: %d Error: External address exceeds length of uselist; treated as immediate", count, instr);
+                    }
                 }
                  else if(!strcmp(addressmode.c_str(), "R")){
-                    if(operand <= 512){
+                    // error_check[9]
+                    if(operand <= modules[module_num].codecount){ //VERIFY THIS
                         instr = (opcode * 1000) +  (operand + modules[module_num].base_address);
-                        printf("%0.3d: %d\n", count, instr);
+                        printf("%0.3d: %d", count, instr);
                     } else {
                         operand = 0;
                         instr = (opcode * 1000) +  (operand + modules[module_num].base_address);
-                        printf("%0.3d: %d Error: Relative address exceeds module size; zero used\n", count, instr);
+                        printf("%0.3d: %d Error: Relative address exceeds module size; zero used", count, instr);
                     }
                 }
+                if(!isValid) printf(" Error: Illegal opcode; treated as 9999");
+                printf("\n");
                 count++;
+            }
+            // error_check[7] - in uselist but not actually used
+            for(int i = 0; i < uselist.size(); i++){
+                if(actually_used.find(uselist[i]) == actually_used.end()){
+                    printf("Warning: Module %d: %s appeared in the uselist but was not actually used\n", module_num + 1, uselist[i].c_str());
+                }
             }
             module_num++;
         }
     }
 
-    // warning [4]
-    // cout << symbol_table.size() << endl;
+    // (warning) error_check[4]
     for(map<string, Symbol>::iterator i = symbol_table.begin(); i != symbol_table.end(); ++i){
-        if(!(*i).second.is_used) printf("Warning: Module %d: %s was defined but never used\n", (*i).second.module_num, (*i).second.txt.c_str());
+        if(!(*i).second.in_use_list){ 
+            printf("Warning: Module %d: %s was defined but never used\n", (*i).second.module_num, (*i).second.txt.c_str());
+        }
     }
 
     fclose(fptr);
