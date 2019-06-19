@@ -106,14 +106,11 @@ char* getToken(FILE *fptr){
             line_num++;
             ptr = strtok(line, delim);
         }
-        // cout << "printed";
     }
     if(ptr != NULL){
         col_num = ptr - line + 1;
-        // printf("Token: %d:%d : %s ", line_num, col_num, ptr);
     }else{
         col_num = linelen;
-        // printf("Final Spot in File : line=%d offset=%d\n", line_num, col_num);
     }
     return ptr;
 }
@@ -121,12 +118,7 @@ char* getToken(FILE *fptr){
 // read next token from the file, check if valid integer and return
 int readInt(FILE *fptr){
     char* tkn = getToken(fptr);
-    if(tkn == NULL && !feof(fptr)){
-        // parseerror(0);
-        // exit(0);
-        return -1;
-    }
-    if(tkn == NULL && feof(fptr)){
+    if(tkn == NULL){
         return -1;
     }
     if(!isNumber(tkn)) {
@@ -141,7 +133,6 @@ int readInt(FILE *fptr){
 int readNumber(FILE *fptr){
     char* tkn = getToken(fptr);
     if(tkn == NULL){
-        printf("number expected but not found");
         return -1;
     }
     if(!isNumber(tkn)) {
@@ -176,7 +167,6 @@ string readIEAR(FILE *fptr){
 }
 
 void pass1(char* input_file){
-    // cout << "checkpoint 1";
     FILE *fptr;
     fptr = fopen(input_file, "r");
     if(fptr == NULL){
@@ -186,10 +176,8 @@ void pass1(char* input_file){
     int offset = 0;
     int total_code = 0;
     int module_num = 0;
-    // cout << "checkpoint 2";
 
     while(!feof(fptr)){
-        // cout << "checkpoint 3";
         Module module;
         vector<Symbol> deflist;
         
@@ -197,7 +185,6 @@ void pass1(char* input_file){
         int defcount = readInt(fptr);
         if(defcount >= 0 && defcount <= 16){
             module.defcount = defcount;
-            // printf("%d\n", defcount);
             for(int i = 0; i < defcount; i++) {
                 string symbol = readSymbol(fptr);
                 int val = readInt(fptr);
@@ -206,7 +193,6 @@ void pass1(char* input_file){
                 s.position = val;
                 s.module_num = module_num + 1;
                 deflist.push_back(s);
-                // printf("(%s, %d)\n", symbol.c_str(), val);
             }
         } else if(defcount > 16){
             parseerror(4);
@@ -217,10 +203,8 @@ void pass1(char* input_file){
         int usecount = readInt(fptr);
         if(usecount >= 0 && usecount <=16){
             module.usecount = usecount;
-            // printf("%d\n", usecount);
             for (int i = 0; i < usecount; i++) {
                 string symbol = readSymbol(fptr);
-                // printf("%s\n", symbol.c_str());
             }
         } else if(usecount > 16){
             parseerror(5);
@@ -229,16 +213,13 @@ void pass1(char* input_file){
         
         // program text - codecount pairs of (type, instr)
         int codecount = readInt(fptr);
-        // assert(codecount >= 0);
         total_code += codecount;
         if(codecount >= 0 && total_code <= 512){
             module.codecount = codecount;
             module.base_address = offset;
-            // printf("%d\n", codecount);
             for (int i = 0; i < codecount; i++) {
                 string addressmode = readIEAR(fptr);
                 int instr = readNumber(fptr);
-                // printf("(%s, %d)\n", addressmode.c_str(), instr);
             }
             offset += codecount;
             modules.push_back(module);
@@ -272,8 +253,6 @@ void pass1(char* input_file){
             printf("%s=%d Error: This variable is multiple times defined; first value used\n", (*i).first.c_str(), (*i).second.position);
         }
     }
-
-    // printf("Final Spot in File : line=%d offset=%d\n", line_num, col_num);
     fclose(fptr);
 }
 
@@ -297,18 +276,15 @@ void pass2(char* input_file){
         // def list - defcount pairs of (S, R)
         int defcount = readInt(fptr);
         if(defcount >= 0){
-            // printf("%d\n", defcount);
             for(int i = 0; i < defcount; i++) {
                 string symbol = readSymbol(fptr);
                 int val = readInt(fptr);
-                // printf("(%s, %d)\n", symbol.c_str(), val);
             }
         }
         
         // use list - usecount symbols
         int usecount = readInt(fptr);
         if(usecount >= 0){
-            // printf("%d\n", usecount);
             for (int i = 0; i < usecount; i++) {
                 string symbol = readSymbol(fptr);
                 uselist.push_back(symbol);
@@ -317,14 +293,12 @@ void pass2(char* input_file){
                 } else {
                     symbol_table.at(symbol).in_use_list = true;
                 }
-                // printf("%s\n", symbol.c_str());
             }
         }
         
         // program text - codecount pairs of (type, instr)
         int codecount = readInt(fptr);
         if(codecount >= 0){
-            // printf("%d\n", codecount);
             for (int i = 0; i < codecount; i++) {
                 string addressmode = readIEAR(fptr);
                 int  instr = readNumber(fptr);
@@ -414,31 +388,8 @@ int main(int argc, char *argv[]){
     if(argc==1) printf("\nNo Extra Command Line Argument Passed Other Than Program Name"); 
     char *filename = argv[1];
 
-    // cout << "checkpoint 1";
     pass1(filename);
     pass2(filename);
-
-    // FILE *fptr;
-    // fptr = fopen(filename, "r");
-    // if(fptr == NULL){
-    //     printf("cannot open file");
-    // }
-    // cout << getToken(fptr) << "---" << getToken(fptr);// << "---" << getToken(fptr) << endl;
-    // while(getToken(fptr) != NULL);
-
-    // cout << isSymbol("X21");
-
-    // --------------Testing------------
-    // errors - 5, 10, 12, 13, 18, 19, 20
-    // segmentation fault - 12, 13, 18
-    /* 
-        solved:
-            5 - added {actually_used.insert(sym);} even if symbol not present in stmbol_table
-            10
-            19
-            20
-
-    */  
 
     return 0;
 }
