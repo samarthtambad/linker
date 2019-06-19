@@ -154,15 +154,11 @@ int readNumber(FILE *fptr){
 
 // read next token from the file, check if valid symbol and return
 string readSymbol(FILE *fptr){
-    string tkn = getToken(fptr);
-    if(tkn.size() <= 0){
-        printf("symbol expected but not found");
-        return NULL;
-    }
-    if(!isSymbol(tkn)){
+    char* tkn = getToken(fptr);
+    if(tkn == NULL || !isSymbol(tkn)){
         parseerror(1);
         exit(0);
-    } else if(tkn.size() > 16){
+    } else if(strlen(tkn) > 16){
         parseerror(3);
         exit(0);
     }
@@ -171,12 +167,8 @@ string readSymbol(FILE *fptr){
 
 // read next token from the file, check if address mode integer and return
 string readIEAR(FILE *fptr){
-    string tkn = getToken(fptr);
-    if(tkn.size() <= 0){
-        printf("IEAR expected but not found");
-        return NULL;
-    }
-    if(!isAddress(tkn)) {
+    char* tkn = getToken(fptr);
+    if(tkn == NULL || !isAddress(tkn)) {
         parseerror(2);
         exit(0);
     }
@@ -443,6 +435,8 @@ int main(int argc, char *argv[]){
         solved:
             5 - added {actually_used.insert(sym);} even if symbol not present in stmbol_table
             10
+            19
+            20
 
     */  
 
