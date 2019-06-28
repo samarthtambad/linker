@@ -1,4 +1,4 @@
 linker: linker.cpp
-	g++ -std=c++11 -g linker.cpp -o linker
+	g++ -std=c++14 linker.cpp -o linker
 clean:
 	rm -f linker *~

@@ -1,0 +1,9 @@
+linker.cpp requires gcc-6.3.0 or higher to compile
+
+Steps:
+1. module load gcc-6.3.0    
+2. open my folder path in terminal
+3. make
+4. an executable named "linker" is generated. Use this for running the tests.
+
+Note: This gives errors if compiled with the default gcc-4.8.5

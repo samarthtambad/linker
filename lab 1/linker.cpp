@@ -1,4 +1,5 @@
-// requires C++11 or greater
+// requires C++14 or greater
+// use gcc-6.3.0 or greater on linserv1
 
 #include <stdlib.h>
 #include <stdio.h>
