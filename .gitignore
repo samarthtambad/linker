@@ -52,6 +52,9 @@ Mkfile.old
 dkms.conf
 
 *.out
+.idea/
+.settings/
 .vscode/
 lab1samples/
 output/
+*.pdf
